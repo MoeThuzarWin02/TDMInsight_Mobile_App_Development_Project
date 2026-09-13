@@ -360,15 +360,18 @@ The latest APK can be downloaded here:
 
 ### TDM Method Selection
 
-![TDM Method Selection](screenshots/method_screen.png)
+<img width="378" height="792" alt="image" src="https://github.com/user-attachments/assets/dcbc987f-d812-441a-82a3-b653b5c6331e" />
+
 
 ### Assessment Input
 
-![Assessment Input](screenshots/input_screen.png)
+<img width="387" height="782" alt="image" src="https://github.com/user-attachments/assets/40242d23-c0d1-4378-b751-ff060d56b5d5" />
+
 
 ### Results Screen
 
-![Results Screen](screenshots/results_screen.png)
+<img width="361" height="803" alt="image" src="https://github.com/user-attachments/assets/5b10568b-937e-4d9d-a3e8-94c24c0d9198" />
+
 
 ---
 
