@@ -13,6 +13,7 @@ A native Android academic prototype for Vancomycin Therapeutic Drug Monitoring (
 - Transparent educational one-compartment intermittent-infusion equations with explicit timing and concentration validation.
 - Expandable calculation explanation.
 - Offline operation; no authentication, backend, analytics, or network calls.
+- - **Patient profile and case history for reviewing previous TDM assessment cases locally.**
 - Academic/clinical disclaimer shown in the app.
 
 ## Open in Android Studio
