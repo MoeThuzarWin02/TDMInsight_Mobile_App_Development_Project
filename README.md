@@ -30,7 +30,9 @@ TDM Insight is a native Android academic application developed for **Vancomycin 
 ## Group Members
 
 Hnin Shwe Yee Htun : AIU24102179 : UI/UX & Frontend Developer
+
 Moe Thuzar Win     : AIU24102185 : Pharmacokinetic & Calculation Developer
+
 Khin Yadanar Phyo   : AIU24102203 : Application Integration, Testing & Documentation
 
 ## Case Study
@@ -370,7 +372,8 @@ The latest APK can be downloaded here:
 
 ### Results Screen
 
-<img width="361" height="803" alt="image" src="https://github.com/user-attachments/assets/5b10568b-937e-4d9d-a3e8-94c24c0d9198" />
+<img width="403" height="818" alt="image" src="https://github.com/user-attachments/assets/61bb3d86-0c49-4dba-a188-ffbbe223639c" />
+
 
 
 ---
