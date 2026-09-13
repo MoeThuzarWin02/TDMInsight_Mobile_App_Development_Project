@@ -355,7 +355,8 @@ The latest APK can be downloaded here:
 
 ### Home Screen
 
-![Home Screen](screenshots/home_screen.png)
+<img width="402" height="826" alt="image" src="https://github.com/user-attachments/assets/41a90c47-0239-4cd7-b11b-c9e143198428" />
+
 
 ### TDM Method Selection
 
