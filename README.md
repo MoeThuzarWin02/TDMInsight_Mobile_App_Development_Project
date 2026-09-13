@@ -36,3 +36,5 @@ The project includes `gradle.properties` with AndroidX enabled and a 2 GB Gradle
 ## Important clinical note
 
 This is an educational software prototype based on the case-study requirements. It is not clinically validated, must not be used for prescribing or treatment decisions, and uses an explicitly documented population-model demonstration. The pre-dose workflow uses a 0.7 L/kg population Vd assumption; post-dose workflows use a one-compartment intermittent-infusion back-extrapolation; and the population Ke estimate is not a validated clinical renal model. Replace or verify all equations, assumptions, targets, and reference values with lecturer-approved authoritative clinical sources before any clinical or assessed deployment.
+
+## Reference
