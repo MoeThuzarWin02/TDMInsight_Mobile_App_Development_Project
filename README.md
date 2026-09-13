@@ -13,6 +13,7 @@ A native Android academic prototype for Vancomycin Therapeutic Drug Monitoring (
 - Transparent educational one-compartment intermittent-infusion equations with explicit timing and concentration validation.
 - Expandable calculation explanation.
 - Offline operation; no authentication, backend, analytics, or network calls.
+- Patient profile and case history for reviewing previous TDM assessment cases locally.
 - Academic/clinical disclaimer shown in the app.
 
 ## Open in Android Studio
@@ -36,3 +37,5 @@ The project includes `gradle.properties` with AndroidX enabled and a 2 GB Gradle
 ## Important clinical note
 
 This is an educational software prototype based on the case-study requirements. It is not clinically validated, must not be used for prescribing or treatment decisions, and uses an explicitly documented population-model demonstration. The pre-dose workflow uses a 0.7 L/kg population Vd assumption; post-dose workflows use a one-compartment intermittent-infusion back-extrapolation; and the population Ke estimate is not a validated clinical renal model. Replace or verify all equations, assumptions, targets, and reference values with lecturer-approved authoritative clinical sources before any clinical or assessed deployment.
+
+## Reference
