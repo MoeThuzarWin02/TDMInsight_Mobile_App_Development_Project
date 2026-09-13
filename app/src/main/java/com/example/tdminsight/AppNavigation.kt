@@ -33,6 +33,7 @@ private enum class AppPage { HOME, METHOD, INPUT, RESULT }
 fun AppNavigation() {
     var page by remember { mutableStateOf(AppPage.HOME) }
     var method by remember { mutableStateOf(Method.PRE) }
+    var sex by remember { mutableStateOf(Sex.MALE) }
     var result by remember { mutableStateOf<TdmResult?>(null) }
     var errors by remember { mutableStateOf(emptyList<String>()) }
     var patient by remember { mutableStateOf("") }
@@ -46,7 +47,7 @@ fun AppNavigation() {
     var post by remember { mutableStateOf("") }
     var postTime by remember { mutableStateOf("") }
 
-    val input = TdmInput(patient, weight.toDoubleOrNull() ?: -1.0, age.toDoubleOrNull() ?: -1.0, scr.toDoubleOrNull() ?: -1.0, dose.toDoubleOrNull() ?: -1.0, interval.toDoubleOrNull() ?: -1.0, pre.toDoubleOrNull(), post.toDoubleOrNull(), postTime.toDoubleOrNull() ?: 0.0, infusion.toDoubleOrNull() ?: -1.0)
+    val input = TdmInput(patient, sex, weight.toDoubleOrNull() ?: -1.0, age.toDoubleOrNull() ?: -1.0, scr.toDoubleOrNull() ?: -1.0, dose.toDoubleOrNull() ?: -1.0, interval.toDoubleOrNull() ?: -1.0, pre.toDoubleOrNull(), post.toDoubleOrNull(), postTime.toDoubleOrNull() ?: 0.0, infusion.toDoubleOrNull() ?: -1.0)
 
     Scaffold(
         containerColor = Pale,
@@ -62,7 +63,7 @@ fun AppNavigation() {
             when (page) {
                 AppPage.HOME -> HomePage { page = AppPage.METHOD }
                 AppPage.METHOD -> MethodPage(method, { method = it }, { page = AppPage.HOME }, { page = AppPage.INPUT })
-                AppPage.INPUT -> InputPage(method, patient, { patient = it }, weight, { weight = it }, age, { age = it }, scr, { scr = it }, dose, { dose = it }, interval, { interval = it }, infusion, { infusion = it }, pre, { pre = it }, post, { post = it }, postTime, { postTime = it }, errors, { page = AppPage.METHOD }) {
+                AppPage.INPUT -> InputPage(method, patient, { patient = it }, sex, { sex = it }, weight, { weight = it }, age, { age = it }, scr, { scr = it }, dose, { dose = it }, interval, { interval = it }, infusion, { infusion = it }, pre, { pre = it }, post, { post = it }, postTime, { postTime = it }, errors, { page = AppPage.METHOD }) {
                     val validationErrors = TdmEngine.validate(input.copy(post = if (method == Method.PRE) null else input.post), method)
                     errors = validationErrors
                     if (validationErrors.isEmpty()) { result = TdmEngine.calculate(input, method); page = AppPage.RESULT }

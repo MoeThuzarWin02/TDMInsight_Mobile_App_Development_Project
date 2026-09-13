@@ -41,62 +41,340 @@ import kotlin.math.exp
 import kotlin.math.ln
 
 enum class Method(val title: String, val subtitle: String) { PRE("Pre-dose", "Trough concentration"), POST("Post-dose", "Post-distribution sample"), PRE_POST("Pre + Post", "Two-point concentration") }
-data class TdmInput(val patient: String, val weight: Double, val age: Double, val scr: Double, val dose: Double, val interval: Double, val pre: Double?, val post: Double?, val postTime: Double, val infusion: Double)
+enum class Sex(val label: String) { MALE("Male"), FEMALE("Female") }
+data class TdmInput(val patient: String, val sex: Sex, val weight: Double, val age: Double, val scr: Double, val dose: Double, val interval: Double, val pre: Double?, val post: Double?, val postTime: Double, val infusion: Double)
 data class TdmResult(val method: Method, val ke: Double, val halfLife: Double, val vd: Double, val clearance: Double, val auc24: Double, val estimatedPeak: Double, val explanation: List<String>)
 
 object TdmEngine {
+
+    /*
+     * postTime is measured from dose start.
+     *
+     * Example:
+     *   Dose starts at 08:00
+     *   Infusion ends at 10:00
+     *   Post sample at 12:00
+     *
+     *   postTime = 4 hours
+     *   infusion = 2 hours
+     */
+
     fun validate(i: TdmInput, method: Method): List<String> = buildList {
-        if (i.patient.isBlank()) add("Enter a fictional patient/case name.")
-        if (i.weight !in 20.0..250.0) add("Weight must be between 20 and 250 kg.")
-        if (i.age !in 1.0..120.0) add("Age must be between 1 and 120 years.")
-        if (i.scr !in 0.1..15.0) add("Serum creatinine must be between 0.1 and 15 mg/dL.")
-        if (i.dose <= 0) add("Dose must be greater than zero.")
-        if (i.interval !in 4.0..72.0) add("Dosing interval must be 4–72 hours.")
-        if (i.infusion !in 0.25..4.0) add("Infusion duration must be 0.25–4 hours.")
-        if (i.infusion >= i.interval) add("Infusion duration must be shorter than the dosing interval.")
-        if (method != Method.POST && (i.pre == null || i.pre <= 0)) add("Enter a valid pre-dose concentration.")
-        if (method != Method.PRE && (i.post == null || i.post <= 0)) add("Enter a valid post-dose concentration.")
-        if (method != Method.PRE && i.postTime <= i.infusion) add("Post sample time must be after infusion completion.")
-        if (method == Method.PRE_POST && (i.post ?: 0.0) <= (i.pre ?: 0.0)) add("For this educational two-point model, post-dose concentration must exceed pre-dose concentration.")
+        if (i.patient.isBlank()) {
+            add("Enter a fictional patient/case name.")
+        }
+
+        if (i.weight !in 20.0..250.0) {
+            add("Weight must be between 20 and 250 kg.")
+        }
+
+        if (i.age !in 1.0..120.0) {
+            add("Age must be between 1 and 120 years.")
+        }
+
+        if (i.scr !in 0.1..15.0) {
+            add("Serum creatinine must be between 0.1 and 15 mg/dL.")
+        }
+
+        if (i.dose <= 0.0) {
+            add("Dose must be greater than zero.")
+        }
+
+        if (i.interval !in 4.0..72.0) {
+            add("Dosing interval must be 4–72 hours.")
+        }
+
+        if (i.infusion !in 0.25..4.0) {
+            add("Infusion duration must be 0.25–4 hours.")
+        }
+
+        if (i.infusion >= i.interval) {
+            add("Infusion duration must be shorter than the dosing interval.")
+        }
+
+        if (method != Method.POST && (i.pre == null || i.pre <= 0.0)) {
+            add("Enter a valid pre-dose concentration.")
+        }
+
+        if (method != Method.PRE && (i.post == null || i.post <= 0.0)) {
+            add("Enter a valid post-dose concentration.")
+        }
+
+        if (method != Method.PRE) {
+            if (i.postTime <= i.infusion) {
+                add("Post sample time must be after infusion completion.")
+            }
+
+            if (i.postTime >= i.interval) {
+                add("Post sample time must be before the next dose.")
+            }
+        }
+
+        if (method == Method.PRE_POST) {
+            val pre = i.pre ?: 0.0
+            val post = i.post ?: 0.0
+
+            if (post <= pre) {
+                add(
+                    "For this model, post-dose concentration must exceed " +
+                            "pre-dose concentration."
+                )
+            }
+
+            val eliminationTime = i.interval - i.postTime
+
+            if (eliminationTime <= 0.0) {
+                add("The time between post-dose sampling and the next dose must be positive.")
+            }
+        }
     }
+
     fun calculate(i: TdmInput, method: Method): TdmResult {
         val explanation = mutableListOf<String>()
+
+        require(validate(i, method).isEmpty()) {
+            validate(i, method).joinToString("; ")
+        }
+
+        /*
+         * Cockcroft-Gault creatinine clearance.
+         *
+         * Serum creatinine is entered in mg/dL.
+         * CrCl result is mL/min.
+         */
+        val sexFactor = if (i.sex == Sex.FEMALE) 0.85 else 1.0
+
+        val crCl = (
+                (140.0 - i.age) *
+                        i.weight *
+                        sexFactor
+                        / (72.0 * i.scr)
+                ).coerceAtLeast(0.0)
+
+        explanation +=
+            "Estimated Cockcroft-Gault CrCl = ${fmt(crCl)} mL/min."
+
+        /*
+         * Population Ke equation from the worksheet:
+         *
+         * Ke = 0.0044 + (CrCl × 0.00083)
+         *
+         * Do not divide this result by 24.
+         */
+        val estimatedKe = 0.0044 + (crCl * 0.00083)
+
+        require(estimatedKe > 0.0 && estimatedKe.isFinite()) {
+            "Unable to calculate a valid elimination rate constant."
+        }
+
         val ke = if (method == Method.PRE_POST) {
-            val pre = i.pre ?: error("Pre-dose concentration is required.")
-            val post = i.post ?: error("Post-dose concentration is required.")
-            require(post > pre && i.postTime > 0.0) { "Concentrations and sampling time do not support a positive elimination slope." }
-            explanation += "Ke = ln(Cpost / Cpre) ÷ time between the two observed samples."
-            ln(post / pre) / i.postTime
+            val pre = requireNotNull(i.pre)
+            val post = requireNotNull(i.post)
+
+            /*
+             * Pre-dose sample is assumed to be immediately before
+             * the next dose.
+             *
+             * postTime is from dose start, so the elimination interval is:
+             *
+             * interval - postTime
+             *
+             * Example:
+             * interval = 12 h
+             * post sample = 4 h after dose start
+             * elimination interval = 8 h
+             */
+            val eliminationTime = i.interval - i.postTime
+
+            require(post > pre) {
+                "Post-dose concentration must be greater than pre-dose concentration."
+            }
+
+            require(eliminationTime > 0.0) {
+                "The elimination interval must be positive."
+            }
+
+            val measuredKe = ln(post / pre) / eliminationTime
+
+            require(measuredKe > 0.0 && measuredKe.isFinite()) {
+                "Measured concentration data do not produce a valid Ke."
+            }
+
+            explanation +=
+                "Measured Ke = ln(Cpost / Cpre) ÷ " +
+                        "(interval − post sample time)."
+
+            measuredKe
         } else {
-            explanation += "Ke is a population estimate from age, weight, and serum creatinine for educational demonstration only; it is not a validated clinical renal model."
-            (0.00083 * (140.0 - i.age) * i.weight / (72.0 * i.scr) / 24.0).coerceIn(0.001, 1.0)
+            explanation +=
+                "Estimated Ke = 0.0044 + (CrCl × 0.00083). " +
+                        "The result is not divided by 24."
+
+            estimatedKe
         }
-        val half = ln(2.0) / ke
-        val vd = if (method == Method.PRE) {
-            explanation += "Vd uses a 0.7 L/kg population assumption because a trough alone cannot identify patient-specific Vd."
-            (0.7 * i.weight).coerceAtLeast(1.0)
+
+        val halfLife = ln(2.0) / ke
+
+        /*
+         * Estimate Vd.
+         *
+         * PRE:
+         * A trough alone cannot identify Vd, so use the explicit
+         * population assumption of 0.7 L/kg.
+         *
+         * POST and PRE_POST:
+         * For intermittent IV infusion:
+         *
+         * Vd =
+         * Dose × (1 − exp(−Ke × T))
+         * --------------------------------
+         * T × Ke × Cmax
+         *
+         * Cmax is extrapolated to the end of infusion.
+         */
+        val vd: Double
+
+        if (method == Method.PRE) {
+            vd = 0.7 * i.weight
+
+            explanation +=
+                "Vd = 0.7 L/kg × body weight because a pre-dose " +
+                        "concentration alone cannot identify patient-specific Vd."
         } else {
-            val post = i.post ?: error("Post-dose concentration is required.")
-            val cmaxEnd = post * exp(ke * (i.postTime - i.infusion).coerceAtLeast(0.0))
-            val infusionFactor = 1.0 - exp(-ke * i.infusion)
-            require(cmaxEnd > 0.0 && infusionFactor > 0.0) { "Unable to estimate Vd from the supplied values." }
-            explanation += "Vd is estimated from the post-dose concentration extrapolated to the end of infusion using a one-compartment intermittent-infusion model."
-            (ke * i.infusion / (infusionFactor * cmaxEnd)).coerceAtLeast(1.0)
+            val post = requireNotNull(i.post)
+
+            val timeAfterInfusion =
+                i.postTime - i.infusion
+
+            require(timeAfterInfusion >= 0.0) {
+                "Post-dose sample must occur at or after infusion completion."
+            }
+
+            /*
+             * Extrapolate the measured post concentration backward
+             * to the end of infusion.
+             */
+            val cMaxEnd =
+                post * exp(ke * timeAfterInfusion)
+
+            val infusionFactor =
+                1.0 - exp(-ke * i.infusion)
+
+            require(cMaxEnd > 0.0 && cMaxEnd.isFinite()) {
+                "Unable to calculate end-of-infusion concentration."
+            }
+
+            require(infusionFactor > 0.0 && infusionFactor.isFinite()) {
+                "Unable to calculate the infusion correction factor."
+            }
+
+            /*
+             * Correct intermittent-infusion Vd equation.
+             */
+            vd =
+                (
+                        i.dose * infusionFactor
+                                / (i.infusion * ke * cMaxEnd)
+                        )
+
+            explanation +=
+                "Vd = Dose × (1 − exp(−Ke × infusion time)) " +
+                        "÷ (infusion time × Ke × Cmax at end of infusion)."
         }
-        val clearance = vd * ke
-        val auc = i.dose / clearance * 24.0 / i.interval
-        val peak = if (method == Method.PRE) {
-            val rate = i.dose / i.infusion
-            rate / (vd * ke) * (1.0 - exp(-ke * i.infusion))
-        } else {
-            val post = i.post ?: error("Post-dose concentration is required.")
-            post * exp(ke * (i.postTime - i.infusion).coerceAtLeast(0.0))
+
+        require(vd > 0.0 && vd.isFinite()) {
+            "Calculated volume of distribution is invalid."
         }
-        explanation += "Half-life = ln(2) ÷ Ke = ${fmt(half)} h."
-        explanation += "Clearance = Vd × Ke = ${fmt(clearance)} L/h."
-        explanation += "AUC24 estimate = dose ÷ clearance × (24 ÷ interval) = ${fmt(auc)} mg·h/L."
-        explanation += "Educational one-compartment estimate only; it must not be used for clinical dose decisions."
-        return TdmResult(method, ke, half, vd, clearance, auc, peak, explanation)
+
+        /*
+         * Clearance:
+         *
+         * CL = Ke × Vd
+         */
+        val clearance = ke * vd
+
+        require(clearance > 0.0 && clearance.isFinite()) {
+            "Calculated clearance is invalid."
+        }
+
+        /*
+         * AUC24:
+         *
+         * AUC24 =
+         * Dose per interval × 24
+         * ----------------------
+         * Dosing interval × Clearance
+         *
+         * Equivalent:
+         *
+         * AUC24 = daily dose / Clearance
+         */
+        val auc24 =
+            (i.dose * 24.0) /
+                    (i.interval * clearance)
+
+        require(auc24 > 0.0 && auc24.isFinite()) {
+            "Calculated AUC24 is invalid."
+        }
+
+        /*
+         * Single-dose end-of-infusion peak estimate.
+         *
+         * This is an educational estimate, not a validated
+         * patient-specific dosing recommendation.
+         */
+        val estimatedPeak =
+            (
+                    i.dose /
+                            (clearance * i.infusion)
+                    ) * (1.0 - exp(-ke * i.infusion))
+
+        require(estimatedPeak > 0.0 && estimatedPeak.isFinite()) {
+            "Calculated peak concentration is invalid."
+        }
+
+        explanation +=
+            "Half-life = ln(2) ÷ Ke = ${fmt(halfLife)} h."
+
+        explanation +=
+            "Clearance = Ke × Vd = ${fmt(clearance)} L/h."
+
+        explanation +=
+            "AUC24 = Dose × 24 ÷ (interval × clearance) " +
+                    "= ${fmt(auc24)} mg·h/L."
+
+        explanation +=
+            "All outputs are educational one-compartment estimates " +
+                    "and must not be used alone for clinical dose decisions."
+
+        /*
+         * Safety guard against the original failure mode.
+         */
+        require(vd >= 10.0) {
+            "Calculated Vd is implausibly low. Check dose, concentration, " +
+                    "sample timing, and units."
+        }
+
+        require(clearance >= 0.1) {
+            "Calculated clearance is implausibly low. Check renal inputs, " +
+                    "sample timing, and units."
+        }
+
+        require(halfLife <= 48.0) {
+            "Calculated half-life is implausibly long. Check Ke, " +
+                    "sample timing, and units."
+        }
+
+        return TdmResult(
+            method = method,
+            ke = ke,
+            halfLife = halfLife,
+            vd = vd,
+            clearance = clearance,
+            auc24 = auc24,
+            estimatedPeak = estimatedPeak,
+            explanation = explanation
+        )
     }
 }
 
@@ -133,9 +411,9 @@ fun fmt(value: Double) = "%.2f".format(value)
 
 @Composable fun MethodPage(method: Method, onMethod: (Method) -> Unit, onBack: () -> Unit, onContinue: () -> Unit) { StepIndicator(1); PageTitle("Choose a sampling method", "Select the workflow that matches your available concentration data."); Section("Sampling workflow") { Method.entries.forEach { m -> MethodChoice(m, method == m) { onMethod(m) } } }; InfoBanner("Tip", "Use Pre + Post when both concentrations are available for a two-point estimate."); ActionRow("Continue", onBack, onContinue); Disclaimer() }
 
-@Composable fun InputPage(method: Method, patient: String, setPatient: (String) -> Unit, weight: String, setWeight: (String) -> Unit, age: String, setAge: (String) -> Unit, scr: String, setScr: (String) -> Unit, dose: String, setDose: (String) -> Unit, interval: String, setInterval: (String) -> Unit, infusion: String, setInfusion: (String) -> Unit, pre: String, setPre: (String) -> Unit, post: String, setPost: (String) -> Unit, postTime: String, setPostTime: (String) -> Unit, errors: List<String>, onBack: () -> Unit, onCalculate: () -> Unit) {
+@Composable fun InputPage(method: Method, patient: String, setPatient: (String) -> Unit, sex: Sex, setSex: (Sex) -> Unit, weight: String, setWeight: (String) -> Unit, age: String, setAge: (String) -> Unit, scr: String, setScr: (String) -> Unit, dose: String, setDose: (String) -> Unit, interval: String, setInterval: (String) -> Unit, infusion: String, setInfusion: (String) -> Unit, pre: String, setPre: (String) -> Unit, post: String, setPost: (String) -> Unit, postTime: String, setPostTime: (String) -> Unit, errors: List<String>, onBack: () -> Unit, onCalculate: () -> Unit) {
     StepIndicator(2); PageTitle("Enter assessment data", "Complete the required fields for this fictional case.")
-    Section("Patient profile") { Field("Case name", patient, setPatient, KeyboardType.Text, "e.g. Demo patient", Icons.Default.Person); Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { Box(Modifier.weight(1f)) { Field("Weight", weight, setWeight, KeyboardType.Decimal, "kg") }; Box(Modifier.weight(1f)) { Field("Age", age, setAge, KeyboardType.Decimal, "years") } }; Field("Serum creatinine", scr, setScr, KeyboardType.Decimal, "mg/dL") }
+    Section("Patient profile") { Field("Case name", patient, setPatient, KeyboardType.Text, "e.g. Demo patient", Icons.Default.Person); Text("Sex", color = Slate, fontSize = 12.sp); Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { Sex.entries.forEach { option -> FilterChip(selected = sex == option, onClick = { setSex(option) }, label = { Text(option.label) }, modifier = Modifier.weight(1f), leadingIcon = if (sex == option) ({ Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(16.dp)) }) else null) } }; Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { Box(Modifier.weight(1f)) { Field("Weight", weight, setWeight, KeyboardType.Decimal, "kg") }; Box(Modifier.weight(1f)) { Field("Age", age, setAge, KeyboardType.Decimal, "years") } }; Field("Serum creatinine", scr, setScr, KeyboardType.Decimal, "mg/dL") }
     Section("Medication regimen") { Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { Box(Modifier.weight(1f)) { Field("Dose", dose, setDose, KeyboardType.Decimal, "mg") }; Box(Modifier.weight(1f)) { Field("Interval", interval, setInterval, KeyboardType.Decimal, "hours") } }; Field("Infusion duration", infusion, setInfusion, KeyboardType.Decimal, "hours", Icons.Default.AccessTime) }
     Section("Sampling data • ${method.title}") { if (method != Method.POST) Field("Pre-dose concentration", pre, setPre, KeyboardType.Decimal, "mg/L", Icons.Default.Science); if (method != Method.PRE) { Field("Post-dose concentration", post, setPost, KeyboardType.Decimal, "mg/L", Icons.Default.Science); Field("Post sample time from dose start", postTime, setPostTime, KeyboardType.Decimal, "hours", Icons.Default.AccessTime) } }
     if (errors.isNotEmpty()) ErrorBox(errors)
